@@ -1,0 +1,26 @@
+FROM gcr.io/google.com/cloudsdktool/google-cloud-cli:alpine
+
+RUN apk add --no-cache \ 
+  direnv jq yq coreutils grep gawk perl
+
+USER cloudsdk
+
+COPY --chown=cloudsdk:cloudsdk profile /home/cloudsdk/.profile
+
+RUN mkdir -p $HOME/.local/bin
+
+ENV PATH=$PATH:/home/cloudsdk/.local/bin
+
+# install tenv
+RUN curl -sSL https://jswank.github.io/install/tenv-install.sh | bash
+
+# install latest tofu
+RUN ${HOME}/.local/bin/tenv tofu install latest && \
+    ${HOME}/.local/bin/tenv tofu use latest
+
+# install tflint
+RUN curl -sSL https://jswank.github.io/install/tflint-install.sh | bash
+
+WORKDIR ${HOME}
+
+CMD ["/bin/bash", "-l"]

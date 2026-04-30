@@ -1,0 +1,20 @@
+export LANG=en_US.UTF-8
+export EDITOR=vi
+export VISUAL=${EDITOR}
+export PAGER=less
+export LESS=RX  # R for ANSI color sequences, X to not clear screen on exit
+export TMPDIR=/var/tmp
+# export PATH=${PATH}:~/.local/bin
+
+# 1. Load custom aliases
+[ -f ~/.bash_aliases ] && . ~/.bash_aliases
+
+# 2. Hook direnv into the shell (if installed)
+if command -v direnv >/dev/null 2>&1; then
+   eval "$(direnv hook bash)"
+fi
+
+# 3. Load Google Cloud SDK path and completions
+GCLOUD_DIR="${GCLOUD_DIR:-/google-cloud-sdk}"
+[ -f "$GCLOUD_DIR/path.bash.inc" ] && . "$GCLOUD_DIR/path.bash.inc"
+[ -f "$GCLOUD_DIR/completion.bash.inc" ] && . "$GCLOUD_DIR/completion.bash.inc"
