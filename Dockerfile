@@ -24,6 +24,4 @@ RUN ${HOME}/.local/bin/tenv tofu install latest && \
 # install tflint
 RUN curl -sSL https://jswank.github.io/install/tflint-install.sh | bash
 
-WORKDIR /home/cloudsdk
-
 CMD ["/bin/bash", "-l"]
