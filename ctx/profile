@@ -4,7 +4,10 @@ export VISUAL=${EDITOR}
 export PAGER=less
 export LESS=RX  # R for ANSI color sequences, X to not clear screen on exit
 export TMPDIR=/var/tmp
-# export PATH=${PATH}:~/.local/bin
+
+if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
+  export PATH="$PATH:$HOME/.local/bin"
+fi
 
 # 1. Load custom aliases
 [ -f ~/.bash_aliases ] && . ~/.bash_aliases

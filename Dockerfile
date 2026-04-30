@@ -5,8 +5,6 @@ RUN apk add --no-cache \
 
 USER cloudsdk
 
-COPY --chown=cloudsdk:cloudsdk profile /home/cloudsdk/.profile
-
 RUN mkdir -p $HOME/.local/bin
 
 ENV PATH=$PATH:/home/cloudsdk/.local/bin
@@ -23,5 +21,10 @@ RUN ${HOME}/.local/bin/tenv tofu install latest && \
 
 # install tflint
 RUN curl -sSL https://jswank.github.io/install/tflint-install.sh | bash
+
+# install task
+RUN curl -sSL https://jswank.github.io/install/task-install.sh | bash
+
+COPY --chown=cloudsdk:cloudsdk profile /home/cloudsdk/.profile
 
 CMD ["/bin/bash", "-l"]
