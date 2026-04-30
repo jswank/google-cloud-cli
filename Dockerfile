@@ -11,6 +11,9 @@ RUN mkdir -p $HOME/.local/bin
 
 ENV PATH=$PATH:/home/cloudsdk/.local/bin
 
+# Set TENV_ROOT explicitly so Cloud Build (running as root) uses the shared install
+ENV TENV_ROOT=/home/cloudsdk/.tenv
+
 # install tenv
 RUN curl -sSL https://jswank.github.io/install/tenv-install.sh | bash
 
