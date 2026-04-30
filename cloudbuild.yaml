@@ -1,5 +1,6 @@
 steps:
   # Build the container image
+  # The build contex should be the ctx subdirector, at the same level as the Dockerfile
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'build'
@@ -7,7 +8,9 @@ steps:
       - '${_AR_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO_NAME}/${_IMAGE_NAME}:$COMMIT_SHA'
       - '-t'
       - '${_AR_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO_NAME}/${_IMAGE_NAME}:latest'
-      - '.'
+      - '-f'
+      - 'Dockerfile'
+      - 'ctx'
 
   # Push the image with the commit SHA tag
   - name: 'gcr.io/cloud-builders/docker'
