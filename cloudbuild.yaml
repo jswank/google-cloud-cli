@@ -25,6 +25,9 @@ images:
   - '${_AR_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO_NAME}/${_IMAGE_NAME}:$COMMIT_SHA'
   - '${_AR_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO_NAME}/${_IMAGE_NAME}:latest'
 
+options:
+  logging: CLOUD_LOGGING_ONLY
+
 substitutions:
   _AR_REGION: 'us-east5'
   _AR_REPO_NAME: 'builders'
