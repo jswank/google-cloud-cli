@@ -24,7 +24,4 @@ RUN ${HOME}/.local/bin/tenv tofu install latest && \
 # install tflint
 RUN curl -sSL https://jswank.github.io/install/tflint-install.sh | bash
 
-# Switch back to root so Cloud Build can write to /workspace
-USER root
-
 CMD ["/bin/bash", "-l"]
