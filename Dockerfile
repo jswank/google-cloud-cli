@@ -1,7 +1,18 @@
 FROM gcr.io/google.com/cloudsdktool/google-cloud-cli:alpine
 
-RUN apk add --no-cache \ 
-  direnv jq yq coreutils grep gawk perl
+# Add labels for better image management
+LABEL maintainer="jswank@scalene.net" \
+      description="Custom Google Cloud SDK image with utilities"
+
+RUN apk add --no-cache \
+    coreutils \
+    direnv \
+    gawk \
+    git \
+    grep \
+    jq \
+    yq
+
 
 USER cloudsdk
 
@@ -26,5 +37,6 @@ RUN curl -sSL https://jswank.github.io/install/tflint-install.sh | bash
 RUN curl -sSL https://jswank.github.io/install/task-install.sh | bash
 
 COPY --chown=cloudsdk:cloudsdk profile /home/cloudsdk/.profile
+ADD --chown=cloudsdk:cloudsdk inputrc /home/cloudsdk/.inputrc
 
 CMD ["/bin/bash", "-l"]
