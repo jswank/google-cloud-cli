@@ -9,10 +9,10 @@ RUN apk add --no-cache \
     direnv \
     gawk \
     git \
+    github-cli \
     grep \
     jq \
     yq
-
 
 USER cloudsdk
 
