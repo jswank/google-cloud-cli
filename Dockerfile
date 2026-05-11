@@ -14,6 +14,8 @@ RUN apk add --no-cache \
     jq \
     yq
 
+RUN gcloud components install --quiet log-streaming beta 
+
 USER cloudsdk
 
 RUN mkdir -p $HOME/.local/bin
@@ -37,6 +39,7 @@ RUN curl -sSL https://jswank.github.io/install/tflint-install.sh | bash
 RUN curl -sSL https://jswank.github.io/install/task-install.sh | bash
 
 COPY --chown=cloudsdk:cloudsdk profile /home/cloudsdk/.profile
-ADD --chown=cloudsdk:cloudsdk inputrc /home/cloudsdk/.inputrc
+COPY --chown=cloudsdk:cloudsdk inputrc /home/cloudsdk/.inputrc
+COPY --chown=cloudsdk:cloudsdk aliasrc /home/cloudsdk/.bash_aliases
 
 CMD ["/bin/bash", "-l"]
