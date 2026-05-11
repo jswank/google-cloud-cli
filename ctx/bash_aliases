@@ -1,0 +1,12 @@
+# Set default Google Cloud environment variables for gcloud
+export CLOUDSDK_COMPUTE_REGION="${CLOUDSDK_COMPUTE_REGION:-us-east4}"
+export CLOUDSDK_COMPUTE_ZONE="${CLOUDSDK_COMPUTE_ZONE:-${CLOUDSDK_COMPUTE_REGION}-c}"
+
+gcloud-init() {
+    gcloud auth login --update-adc
+    if [ -n "$CLOUDSDK_CORE_PROJECT" ]; then
+        gcloud auth application-default set-quota-project "$CLOUDSDK_CORE_PROJECT"
+    else
+        echo "Warning: CLOUDSDK_CORE_PROJECT is not set. Skipping quota project configuration." >&2
+    fi
+}

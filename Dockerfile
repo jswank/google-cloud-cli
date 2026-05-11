@@ -39,7 +39,6 @@ RUN curl -sSL https://jswank.github.io/install/tflint-install.sh | bash
 RUN curl -sSL https://jswank.github.io/install/task-install.sh | bash
 
 COPY --chown=cloudsdk:cloudsdk profile /home/cloudsdk/.profile
-COPY --chown=cloudsdk:cloudsdk inputrc /home/cloudsdk/.inputrc
-COPY --chown=cloudsdk:cloudsdk aliasrc /home/cloudsdk/.bash_aliases
+COPY --chown=cloudsdk:cloudsdk bash_aliases /home/cloudsdk/.bash_aliases
 
 CMD ["/bin/bash", "-l"]
