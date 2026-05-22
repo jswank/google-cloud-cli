@@ -1,8 +1,9 @@
 # Cloud Build Environment Variables
 
-The following environment variables are automatically available in every Cloud
-Build step container. No explicit `env:` declaration is required in the build
-config yaml.
+The following environment variables are available in every Cloud Build step
+container. Both pipelines set `options.automapSubstitutions: true`, which
+automatically maps all substitution variables to environment variables. No
+explicit `env:` declaration is required in the build config yaml.
 
 ## Built-in Substitutions
 
