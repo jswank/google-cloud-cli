@@ -10,6 +10,11 @@ shift
 # Default STATUS_TOKEN to GITHUB_TOKEN if not explicitly set
 export STATUS_TOKEN="${STATUS_TOKEN:-$GITHUB_TOKEN}"
 
+# Derive variables not provided directly by the Cloud Build environment.
+# See cicd.md for the full list of variables available in each step.
+export BUILD_URL="https://console.cloud.google.com/cloud-build/builds;region=${LOCATION}/${BUILD_ID}?project=${PROJECT_ID}"
+export PR_NUMBER="${_PR_NUMBER:-}"
+
 # Ensure required environment variables exist for status posting
 if [ -z "${COMMIT_SHA:-}" ] || [ -z "${REPO_FULL_NAME:-}" ] || [ -z "${BUILD_URL:-}" ]; then
   echo "WARNING: COMMIT_SHA, REPO_FULL_NAME, or BUILD_URL is missing. Status reporting may fail."
@@ -17,11 +22,6 @@ fi
 
 # Locate helper scripts (assuming they are in the same directory as tofu-runner)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-# Source build-context.env if it exists (for backwards compatibility)
-if [ -f "/workspace/build-context.env" ]; then
-  source "/workspace/build-context.env"
-fi
 
 case "$COMMAND" in
   tflint)

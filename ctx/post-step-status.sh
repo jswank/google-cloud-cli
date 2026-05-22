@@ -6,17 +6,16 @@
 # /workspace/build-context.env in the calling step or script).
 #
 # Usage:
-#   . /workspace/build-context.env
 #   STATUS_TOKEN="..." ./scripts/post-step-status.sh <step> <context>
 #
 # Arguments:
 #   step:    Build step name: tflint | fmt | validate | plan
 #   context: GitHub status context string, e.g. ci/tflint
 #
-# Environment:
+# Environment (Cloud Build built-ins + vars derived by tofu-runner.sh — see cicd.md):
 #   COMMIT_SHA        Full commit SHA
-#   REPO_FULL_NAME    Repository full name, e.g. jswank/gcp-sandbox-stigian
-#   BUILD_URL         Cloud Build console URL for this build
+#   REPO_FULL_NAME    Repository full name, e.g. jswank/gcp-sandbox-jason
+#   BUILD_URL         Cloud Build console URL for this build (derived)
 #   STATUS_TOKEN      GitHub API token with repo:status scope
 
 set -euo pipefail
@@ -188,9 +187,9 @@ main() {
   local step="${1:?step argument is required}"
   local context="${2:?context argument is required}"
 
-  : "${COMMIT_SHA:?is not set — source /workspace/build-context.env}"
-  : "${REPO_FULL_NAME:?is not set — source /workspace/build-context.env}"
-  : "${BUILD_URL:?is not set — source /workspace/build-context.env}"
+  : "${COMMIT_SHA:?is not set — verify Cloud Build substitution variables are available (see cicd.md)}"
+  : "${REPO_FULL_NAME:?is not set — verify Cloud Build substitution variables are available (see cicd.md)}"
+  : "${BUILD_URL:?is not set — verify BUILD_URL is derived in tofu-runner.sh (see cicd.md)}"
   : "${STATUS_TOKEN:?is not set}"
 
   local code state description
