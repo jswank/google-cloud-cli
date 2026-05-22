@@ -104,7 +104,7 @@ case "$COMMAND" in
         TOFU_ARGS+=("$arg")
       fi
     done
-    tofu plan -no-color "${TOFU_ARGS[@]}" 2>&1 | tee /workspace/plan-output.txt
+    tofu plan -detailed-exitcode -no-color "${TOFU_ARGS[@]}" 2>&1 | tee /workspace/plan-output.txt
     EXIT_CODE=${PIPESTATUS[0]}
     echo $EXIT_CODE > /workspace/plan.exit
     "${SCRIPT_DIR}/post-step-status.sh" plan "$CONTEXT"
