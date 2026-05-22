@@ -40,5 +40,14 @@ RUN curl -sSL https://jswank.github.io/install/task-install.sh | bash
 
 COPY --chown=cloudsdk:cloudsdk profile /home/cloudsdk/.profile
 COPY --chown=cloudsdk:cloudsdk bash_aliases /home/cloudsdk/.bash_aliases
+COPY --chown=cloudsdk:cloudsdk post-status.sh /home/cloudsdk/.local/bin/post-status.sh
+COPY --chown=cloudsdk:cloudsdk post-step-status.sh /home/cloudsdk/.local/bin/post-step-status.sh
+COPY --chown=cloudsdk:cloudsdk tofu-pr-summary.sh /home/cloudsdk/.local/bin/tofu-pr-summary.sh
+COPY --chown=cloudsdk:cloudsdk tofu-runner.sh /home/cloudsdk/.local/bin/tofu-runner
+
+RUN chmod +x /home/cloudsdk/.local/bin/post-status.sh \
+             /home/cloudsdk/.local/bin/post-step-status.sh \
+             /home/cloudsdk/.local/bin/tofu-pr-summary.sh \
+             /home/cloudsdk/.local/bin/tofu-runner
 
 CMD ["/bin/bash", "-l"]
