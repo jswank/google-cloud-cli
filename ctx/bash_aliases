@@ -1,12 +1,56 @@
-# Set default Google Cloud environment variables for gcloud
-export CLOUDSDK_COMPUTE_REGION="${CLOUDSDK_COMPUTE_REGION:-us-east4}"
-export CLOUDSDK_COMPUTE_ZONE="${CLOUDSDK_COMPUTE_ZONE:-${CLOUDSDK_COMPUTE_REGION}-c}"
-
 gcloud-init() {
-    gcloud auth login --update-adc
+    # WIF_PROVIDER should be like: navsea0-nxfy/providers/entra-oidc
+    if [ -n "$WIF_PROVIDER" ]; then
+        local full_provider="locations/global/workforcePools/$WIF_PROVIDER"
+        local gcloud_config_dir
+        gcloud_config_dir=$(gcloud info --format='value(config.paths.global_config_dir)' 2>/dev/null || echo "$HOME/.config/gcloud")
+        local login_config="$gcloud_config_dir/login-config.json"
+        
+        # create the login config file
+        gcloud iam workforce-pools create-login-config \
+          "$full_provider" \
+          --output-file="$login_config"
+        # let the user know that there will be two prompts for login
+        echo "Note: since WIF_PROVIDER is set, you will be prompted to login twice: once for gcloud auth login and once for gcloud auth application-default login." >&2
+        # when using WIF, --update-adc should not be used
+        gcloud auth login --no-launch-browser --login-config="$login_config"
+        gcloud auth application-default login --no-launch-browser --login-config="$login_config"
+    else
+      gcloud auth login --update-adc --no-launch-browser
+    fi
+
+    # Setup quota project if environment variable is set
     if [ -n "$CLOUDSDK_CORE_PROJECT" ]; then
         gcloud auth application-default set-quota-project "$CLOUDSDK_CORE_PROJECT"
     else
         echo "Warning: CLOUDSDK_CORE_PROJECT is not set. Skipping quota project configuration." >&2
     fi
+
+  # Update the shell prompt based on the newly authenticated account
+  update-gcloud-prompt
+}
+
+update-gcloud-prompt() {
+   # Retrieve the active account using the jq query
+   local active_account
+   active_account=$(gcloud auth list --format json 2>/dev/null | jq -r '.[] | select(.status == "ACTIVE") | .account')
+
+   # Exit early if there is no active gcloud account
+   if [ -z "$active_account" ]; then
+       return 0
+   fi
+
+   local identifier
+   if [[ "$active_account" == principal://* ]]; then
+       # Extract everything prior to the first '-' in WIF_PROVIDER (e.g. navsea0)
+       # using pure bash parameter expansion for speed
+       local prefix="${WIF_PROVIDER%%-*}"
+       identifier="${prefix:-navsea} - WIF"
+   else
+       # Fallback to the active account email for standard logins
+       identifier="$active_account"
+   fi
+
+   # Set the bold, two-line prompt with the reversed color scheme on the first line
+   export PS1="\n\[\e[1;7m\]${identifier}\[\e[0;1m\]\n\w $ \[\e[0m\]"
 }
