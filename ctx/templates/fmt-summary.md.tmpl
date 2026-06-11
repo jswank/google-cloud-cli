@@ -1,0 +1,18 @@
+{{- $fmt_out := "" -}}
+{{- $baseDir := env.Getenv "WORKSPACE_DIR" "/workspace" -}}
+{{- if file.Exists (printf "%s/fmt-output.txt" $baseDir) -}}
+  {{- $fmt_out = file.Read (printf "%s/fmt-output.txt" $baseDir) | regexp.Replace "\\x1b\\[[0-9;]*[a-zA-Z]" "" | strings.TrimSpace -}}
+{{- end -}}
+
+{{- if $fmt_out -}}
+### OpenTofu Format Check: ❌ Failed
+
+The following files are not formatted correctly. Please run `tofu fmt` to format them.
+
+```
+{{ $fmt_out }}
+```
+{{- else -}}
+### OpenTofu Format Check: ✅ Passed
+All configuration files are correctly formatted!
+{{- end -}}

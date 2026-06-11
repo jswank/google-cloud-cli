@@ -1,0 +1,223 @@
+<!-- cloud-build-tofu-ci -->
+{{- $baseDir := env.Getenv "WORKSPACE_DIR" "/workspace" -}}
+
+{{- $tflint_exit := "skipped" -}}
+{{- if file.Exists (printf "%s/tflint.exit" $baseDir) -}}
+  {{- $tflint_exit = file.Read (printf "%s/tflint.exit" $baseDir) | strings.TrimSpace -}}
+{{- end -}}
+
+{{- $fmt_exit := "skipped" -}}
+{{- if file.Exists (printf "%s/fmt.exit" $baseDir) -}}
+  {{- $fmt_exit = file.Read (printf "%s/fmt.exit" $baseDir) | strings.TrimSpace -}}
+{{- end -}}
+
+{{- $validate_exit := "skipped" -}}
+{{- if file.Exists (printf "%s/validate.exit" $baseDir) -}}
+  {{- $validate_exit = file.Read (printf "%s/validate.exit" $baseDir) | strings.TrimSpace -}}
+{{- end -}}
+
+{{- $plan_exit := "skipped" -}}
+{{- if file.Exists (printf "%s/plan.exit" $baseDir) -}}
+  {{- $plan_exit = file.Read (printf "%s/plan.exit" $baseDir) | strings.TrimSpace -}}
+{{- end -}}
+
+{{- define "status_badge" -}}
+  {{- if eq . "0" -}}
+    ✅ `success`
+  {{- else if eq . "skipped" -}}
+    ⏭ `skipped`
+  {{- else -}}
+    ❌ `failure`
+  {{- end -}}
+{{- end -}}
+
+{{- define "status_badge_plan" -}}
+  {{- if or (eq . "0") (eq . "2") -}}
+    ✅ `success`
+  {{- else if eq . "skipped" -}}
+    ⏭ `skipped`
+  {{- else -}}
+    ❌ `failure`
+  {{- end -}}
+{{- end -}}
+
+#### TFLint {{ template "status_badge" $tflint_exit }}
+{{- if and (ne $tflint_exit "0") (ne $tflint_exit "skipped") -}}
+  {{- if file.Exists (printf "%s/tflint.json" $baseDir) -}}
+    {{- $tflint := file.Read (printf "%s/tflint.json" $baseDir) | json -}}
+    {{- if and $tflint (or $tflint.issues $tflint.errors) -}}
+<details><summary>TFLint Issues</summary>
+
+| Severity | Rule | Location | Message |
+| :--- | :--- | :--- | :--- |
+{{- range $tflint.issues }}
+| {{ if eq .rule.severity "warning" }}⚠️ `warning`{{ else if eq .rule.severity "error" }}❌ `error`{{ else }}`{{ .rule.severity }}`{{ end }} | [{{ .rule.name }}]({{ .rule.link }}) | `{{ .range.filename }}:{{ .range.start.line }}` | {{ .message }} |
+{{- end }}
+
+{{- if $tflint.errors -}}
+**Errors:**
+{{ range $tflint.errors }}
+- ❌ {{ .message }}
+{{ end }}
+{{- end }}
+</details>
+    {{- end -}}
+  {{- else if file.Exists (printf "%s/tflint-output.txt" $baseDir) -}}
+<details><summary>TFLint Output</summary>
+
+```
+{{ file.Read (printf "%s/tflint-output.txt" $baseDir) | regexp.Replace "\\x1b\\[[0-9;]*[a-zA-Z]" "" }}
+```
+</details>
+  {{- end -}}
+{{- end }}
+
+#### TF Format {{ template "status_badge" $fmt_exit }}
+{{- if and (ne $fmt_exit "0") (ne $fmt_exit "skipped") -}}
+  {{- if file.Exists (printf "%s/fmt-output.txt" $baseDir) -}}
+    {{- $fmt_out := file.Read (printf "%s/fmt-output.txt" $baseDir) | regexp.Replace "\\x1b\\[[0-9;]*[a-zA-Z]" "" | strings.TrimSpace -}}
+    {{- if $fmt_out }}
+<details><summary>Unformatted Files</summary>
+
+```
+{{ $fmt_out }}
+```
+</details>
+    {{- end -}}
+  {{- end -}}
+{{- end }}
+
+#### TF Validate {{ template "status_badge" $validate_exit }}
+{{- if and (ne $validate_exit "0") (ne $validate_exit "skipped") -}}
+  {{- if file.Exists (printf "%s/validate.json" $baseDir) -}}
+    {{- $validate := file.Read (printf "%s/validate.json" $baseDir) | json -}}
+    {{- if and $validate (not $validate.valid) }}
+<details><summary>Validation Issues</summary>
+
+{{ range $validate.diagnostics }}
+##### {{ if eq .severity "error" }}❌ {{ else }}⚠️ {{ end }}{{ .summary }}
+- **Location**: `{{ .range.filename }}:{{ .range.start.line }}`
+- **Detail**: {{ .detail }}
+{{ if .snippet }}
+```hcl
+{{ .snippet.code }}
+```
+{{ end }}
+---
+{{ end }}
+</details>
+    {{- end -}}
+  {{- else if file.Exists (printf "%s/validate-output.txt" $baseDir) -}}
+<details><summary>Validate Output</summary>
+
+```
+{{ file.Read (printf "%s/validate-output.txt" $baseDir) | regexp.Replace "\\x1b\\[[0-9;]*[a-zA-Z]" "" }}
+```
+</details>
+  {{- end -}}
+{{- end }}
+
+#### TF Plan {{ template "status_badge_plan" $plan_exit }}
+{{- if and (ne $plan_exit "skipped") (file.Exists (printf "%s/plan.json" $baseDir)) -}}
+  {{- $plan := file.Read (printf "%s/plan.json" $baseDir) | json -}}
+  {{- if $plan -}}
+    {{- $addList := coll.Slice -}}
+    {{- $changeList := coll.Slice -}}
+    {{- $destroyList := coll.Slice -}}
+    {{- $replaceList := coll.Slice -}}
+    {{- range $plan.resource_changes -}}
+      {{- $actions := .change.actions -}}
+      {{- if and (has $actions "create") (has $actions "delete") -}}
+        {{- $replaceList = coll.Append . $replaceList -}}
+      {{- else if has $actions "create" -}}
+        {{- $addList = coll.Append . $addList -}}
+      {{- else if has $actions "update" -}}
+        {{- $changeList = coll.Append . $changeList -}}
+      {{- else if has $actions "delete" -}}
+        {{- $destroyList = coll.Append . $destroyList -}}
+      {{- end -}}
+    {{- end -}}
+
+**Plan Summary:** {{ len $addList }} to add, {{ len $changeList }} to change, {{ len $destroyList }} to destroy, {{ len $replaceList }} to replace.
+
+{{ if or $addList $changeList $replaceList $destroyList $plan.output_changes }}
+<details open><summary>Show Plan Details</summary>
+
+{{ if $addList }}
+##### ➕ Resources to be Created ({{ len $addList }})
+{{- range $addList }}
+- `{{ .address }}` (type: `{{ .type }}`)
+{{- range $k, $v := .change.after }}
+  - `{{ $k }}`: `{{ toJSON $v }}`
+{{- end }}
+{{- end }}
+{{ end }}
+
+{{ if $changeList }}
+##### 📝 Resources to be Updated ({{ len $changeList }})
+{{- range $changeList }}
+  {{- $change := .change }}
+- `{{ .address }}` (type: `{{ .type }}`)
+  {{- range $k, $v := $change.after }}
+    {{- $b_val := index $change.before $k }}
+    {{- if ne (toJSON $v) (toJSON $b_val) }}
+  - `{{ $k }}`: `{{ toJSON $b_val }}` -> `{{ toJSON $v }}`
+    {{- end }}
+  {{- end }}
+{{- end }}
+{{ end }}
+
+{{ if $replaceList }}
+##### 🔄 Resources to be Replaced ({{ len $replaceList }})
+{{- range $replaceList }}
+  {{- $change := .change }}
+- `{{ .address }}` (type: `{{ .type }}`)
+  {{- range $k, $v := $change.after }}
+    {{- if $change.before }}
+      {{- $b_val := index $change.before $k }}
+      {{- if ne (toJSON $v) (toJSON $b_val) }}
+  - `{{ $k }}`: `{{ toJSON $b_val }}` -> `{{ toJSON $v }}`
+      {{- end }}
+    {{- else }}
+  - `{{ $k }}`: `{{ toJSON $v }}`
+    {{- end }}
+  {{- end }}
+{{- end }}
+{{ end }}
+
+{{ if $destroyList }}
+##### ❌ Resources to be Destroyed ({{ len $destroyList }})
+{{- range $destroyList }}
+- `{{ .address }}` (type: `{{ .type }}`)
+{{- range $k, $v := .change.before }}
+  - `{{ $k }}`: `{{ toJSON $v }}`
+{{- end }}
+{{- end }}
+{{ end }}
+
+{{ if $plan.output_changes }}
+##### 📤 Output Changes
+| Output | Action | Before | After |
+| :--- | :--- | :--- | :--- |
+{{- range $k, $v := $plan.output_changes }}
+| `{{ $k }}` | `{{ join $v.actions ", " }}` | `{{ if eq $v.before nil }}null{{ else if $v.before_sensitive }}<sensitive>{{ else }}{{ $v.before }}{{ end }}` | `{{ if eq $v.after nil }}null{{ else if $v.after_sensitive }}<sensitive>{{ else }}{{ $v.after }}{{ end }}` |
+{{- end }}
+{{ end }}
+
+</details>
+{{- end -}}
+  {{- end -}}
+{{- else if and (ne $plan_exit "skipped") (file.Exists (printf "%s/plan-output.txt" $baseDir)) -}}
+<details><summary>Plan Output</summary>
+
+```
+{{ file.Read (printf "%s/plan-output.txt" $baseDir) | regexp.Replace "\\x1b\\[[0-9;]*[a-zA-Z]" "" }}
+```
+</details>
+{{- end }}
+
+{{- $buildId := env.Getenv "BUILD_ID" "" }}
+{{- $buildUrl := env.Getenv "BUILD_URL" "" }}
+{{- if or $buildId $buildUrl }}
+*Build: [{{ if $buildId }}{{ $buildId }}{{ else }}View Build{{ end }}]({{ $buildUrl }})*
+{{- end -}}

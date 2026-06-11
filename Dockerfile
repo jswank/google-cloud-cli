@@ -38,16 +38,24 @@ RUN curl -sSL https://jswank.github.io/install/tflint-install.sh | bash
 # install task
 RUN curl -sSL https://jswank.github.io/install/task-install.sh | bash
 
+# install gomplate
+RUN curl -sSL https://github.com/hairyhenderson/gomplate/releases/download/v5.1.0/gomplate_linux-amd64 -o ${HOME}/.local/bin/gomplate && \
+    chmod +x ${HOME}/.local/bin/gomplate
+
 COPY --chown=cloudsdk:cloudsdk profile /home/cloudsdk/.profile
 COPY --chown=cloudsdk:cloudsdk bash_aliases /home/cloudsdk/.bash_aliases
 COPY --chown=cloudsdk:cloudsdk post-status.sh /home/cloudsdk/.local/bin/post-status.sh
 COPY --chown=cloudsdk:cloudsdk post-step-status.sh /home/cloudsdk/.local/bin/post-step-status.sh
 COPY --chown=cloudsdk:cloudsdk tofu-pr-summary.sh /home/cloudsdk/.local/bin/tofu-pr-summary.sh
+COPY --chown=cloudsdk:cloudsdk tofu-pr-summary-gomplate.sh /home/cloudsdk/.local/bin/tofu-pr-summary-gomplate.sh
 COPY --chown=cloudsdk:cloudsdk tofu-runner.sh /home/cloudsdk/.local/bin/tofu-runner
+COPY --chown=cloudsdk:cloudsdk Taskfile.yaml /home/cloudsdk/Taskfile.yaml
+COPY --chown=cloudsdk:cloudsdk templates/ /home/cloudsdk/.local/bin/templates/
 
 RUN chmod +x /home/cloudsdk/.local/bin/post-status.sh \
              /home/cloudsdk/.local/bin/post-step-status.sh \
              /home/cloudsdk/.local/bin/tofu-pr-summary.sh \
+             /home/cloudsdk/.local/bin/tofu-pr-summary-gomplate.sh \
              /home/cloudsdk/.local/bin/tofu-runner
 
 CMD ["/bin/bash", "-l"]

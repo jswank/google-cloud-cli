@@ -1,0 +1,34 @@
+{{- $validate := . -}}
+{{- if not (has $validate "valid") -}}
+  {{- $baseDir := env.Getenv "WORKSPACE_DIR" "/workspace" -}}
+  {{- if file.Exists (printf "%s/validate.json" $baseDir) -}}
+    {{- $validate = file.Read (printf "%s/validate.json" $baseDir) | json -}}
+  {{- end -}}
+{{- end -}}
+
+{{- if and $validate (has $validate "valid") -}}
+  {{- if $validate.valid -}}
+### OpenTofu Validation: ✅ Valid
+The configuration is valid and ready for planning!
+  {{- else -}}
+### OpenTofu Validation: ❌ Invalid
+
+The configuration has {{ $validate.error_count }} error(s) and {{ $validate.warning_count }} warning(s).
+
+#### Validation Diagnostics
+{{- range $validate.diagnostics }}
+##### {{ if eq .severity "error" }}❌ {{ else }}⚠️ {{ end }}{{ .summary }}
+- **Severity**: `{{ .severity }}`
+- **Location**: `{{ .range.filename }}:{{ .range.start.line }}`
+- **Detail**: {{ .detail }}
+{{ if .snippet }}
+```hcl
+{{ .snippet.code }}
+```
+{{ end }}
+---
+{{- end }}
+  {{- end -}}
+{{- else -}}
+No validation results found.
+{{- end -}}

@@ -1,0 +1,102 @@
+{{- $plan := . -}}
+{{- if not (has $plan "resource_changes") -}}
+  {{- $baseDir := env.Getenv "WORKSPACE_DIR" "/workspace" -}}
+  {{- if file.Exists (printf "%s/plan.json" $baseDir) -}}
+    {{- $plan = file.Read (printf "%s/plan.json" $baseDir) | json -}}
+  {{- end -}}
+{{- end -}}
+
+{{- if and $plan (has $plan "resource_changes") -}}
+  {{- $addList := coll.Slice -}}
+  {{- $changeList := coll.Slice -}}
+  {{- $destroyList := coll.Slice -}}
+  {{- $replaceList := coll.Slice -}}
+  {{- range $plan.resource_changes -}}
+    {{- $actions := .change.actions -}}
+    {{- if and (has $actions "create") (has $actions "delete") -}}
+      {{- $replaceList = coll.Append . $replaceList -}}
+    {{- else if has $actions "create" -}}
+      {{- $addList = coll.Append . $addList -}}
+    {{- else if has $actions "update" -}}
+      {{- $changeList = coll.Append . $changeList -}}
+    {{- else if has $actions "delete" -}}
+      {{- $destroyList = coll.Append . $destroyList -}}
+    {{- end -}}
+  {{- end -}}
+
+### OpenTofu Plan Summary
+- **To Create**: {{ len $addList }}
+- **To Update**: {{ len $changeList }}
+- **To Destroy**: {{ len $destroyList }}
+- **To Replace**: {{ len $replaceList }}
+
+{{ if or $addList $changeList $replaceList $destroyList $plan.output_changes }}
+<details open><summary>Show Plan Details</summary>
+
+{{ if $addList }}
+#### ➕ Resources to be Created ({{ len $addList }})
+{{- range $addList }}
+- `{{ .address }}` (type: `{{ .type }}`)
+{{- range $k, $v := .change.after }}
+  - `{{ $k }}`: `{{ toJSON $v }}`
+{{- end }}
+{{- end }}
+{{ end }}
+
+{{ if $changeList }}
+#### 📝 Resources to be Updated ({{ len $changeList }})
+{{- range $changeList }}
+  {{- $change := .change }}
+- `{{ .address }}` (type: `{{ .type }}`)
+  {{- range $k, $v := $change.after }}
+    {{- $b_val := index $change.before $k }}
+    {{- if ne (toJSON $v) (toJSON $b_val) }}
+  - `{{ $k }}`: `{{ toJSON $b_val }}` -> `{{ toJSON $v }}`
+    {{- end }}
+  {{- end }}
+{{- end }}
+{{ end }}
+
+{{ if $replaceList }}
+#### 🔄 Resources to be Replaced ({{ len $replaceList }})
+{{- range $replaceList }}
+  {{- $change := .change }}
+- `{{ .address }}` (type: `{{ .type }}`)
+  {{- range $k, $v := $change.after }}
+    {{- if $change.before }}
+      {{- $b_val := index $change.before $k }}
+      {{- if ne (toJSON $v) (toJSON $b_val) }}
+  - `{{ $k }}`: `{{ toJSON $b_val }}` -> `{{ toJSON $v }}`
+      {{- end }}
+    {{- else }}
+  - `{{ $k }}`: `{{ toJSON $v }}`
+    {{- end }}
+  {{- end }}
+{{- end }}
+{{ end }}
+
+{{ if $destroyList }}
+#### ❌ Resources to be Destroyed ({{ len $destroyList }})
+{{- range $destroyList }}
+- `{{ .address }}` (type: `{{ .type }}`)
+{{- range $k, $v := .change.before }}
+  - `{{ $k }}`: `{{ toJSON $v }}`
+{{- end }}
+{{- end }}
+{{ end }}
+
+{{ if $plan.output_changes }}
+#### 📤 Output Changes
+| Output | Action | Before | After |
+| :--- | :--- | :--- | :--- |
+{{- range $k, $v := $plan.output_changes }}
+| `{{ $k }}` | `{{ join $v.actions ", " }}` | `{{ if eq $v.before nil }}null{{ else if $v.before_sensitive }}<sensitive>{{ else }}{{ $v.before }}{{ end }}` | `{{ if eq $v.after nil }}null{{ else if $v.after_sensitive }}<sensitive>{{ else }}{{ $v.after }}{{ end }}` |
+{{- end }}
+{{ end }}
+
+</details>
+{{- end }}
+{{- else -}}
+### OpenTofu Plan Summary
+No changes. Your infrastructure matches the configuration.
+{{- end }}

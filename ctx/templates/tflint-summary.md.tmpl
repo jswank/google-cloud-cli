@@ -1,0 +1,34 @@
+{{- $tflint := . -}}
+{{- if not (has $tflint "issues") -}}
+  {{- $baseDir := env.Getenv "WORKSPACE_DIR" "/workspace" -}}
+  {{- if file.Exists (printf "%s/tflint.json" $baseDir) -}}
+    {{- $tflint = file.Read (printf "%s/tflint.json" $baseDir) | json -}}
+  {{- end -}}
+{{- end -}}
+
+{{- if and $tflint (or (has $tflint "issues") (has $tflint "errors")) -}}
+  {{- if and (not $tflint.issues) (not $tflint.errors) -}}
+### TFLint Status: ✅ Passed
+No issues or errors found.
+  {{- else -}}
+### TFLint Status: ❌ Failed
+
+{{- if $tflint.issues -}}
+#### TFLint Issues
+| Severity | Rule | Location | Message |
+| :--- | :--- | :--- | :--- |
+{{- range $tflint.issues }}
+| {{ if eq .rule.severity "warning" }}⚠️ `warning`{{ else if eq .rule.severity "error" }}❌ `error`{{ else }}`{{ .rule.severity }}`{{ end }} | [{{ .rule.name }}]({{ .rule.link }}) | `{{ .range.filename }}:{{ .range.start.line }}` | {{ .message }} |
+{{- end }}
+{{- end }}
+
+{{- if $tflint.errors -}}
+#### TFLint Errors
+{{ range $tflint.errors }}
+- ❌ **{{ .message }}**
+{{- end }}
+{{- end }}
+  {{- end -}}
+{{- else -}}
+No TFLint results found.
+{{- end -}}

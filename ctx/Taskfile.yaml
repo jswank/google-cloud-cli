@@ -1,0 +1,175 @@
+version: '3'
+
+vars:
+  WORKSPACE_DIR: '{{.WORKSPACE_DIR | default "/workspace"}}'
+  TOFU_DIR: '{{.TOFU_DIR | default "."}}'
+
+tasks:
+  default:
+    desc: List all available tasks
+    cmds:
+      - task --list
+
+  init:
+    desc: Initialize OpenTofu directory and set pending check statuses
+    summary: |
+      Runs 'tofu init' in the background, writes logs/status files to the workspace,
+      and marks validation/planning checks as pending on GitHub.
+    vars:
+      CONTEXT: '{{.CONTEXT | default "ci/init"}}'
+      PENDING_CONTEXTS: '{{.PENDING_CONTEXTS | default "ci/validate ci/plan"}}'
+    cmds:
+      - mkdir -p {{.WORKSPACE_DIR}}
+      - |
+        tofu -chdir={{.TOFU_DIR}} init -no-color > {{.WORKSPACE_DIR}}/init-output.txt 2>&1 || EXIT_CODE=$?
+        echo ${EXIT_CODE:-0} > {{.WORKSPACE_DIR}}/init.exit
+      - post-step-status.sh init "{{.CONTEXT}}"
+      - |
+        EXIT_CODE=$(cat {{.WORKSPACE_DIR}}/init.exit)
+        if [ "$EXIT_CODE" = "0" ]; then
+          for ctx in {{.PENDING_CONTEXTS}}; do
+            post-status.sh \
+              --state=pending \
+              --context="${ctx}" \
+              --description="waiting..." \
+              --allow-failure
+          done
+        else
+          exit $EXIT_CODE
+        fi
+
+  tflint:
+    desc: Run TFLint and export JSON results and status
+    summary: |
+      Initializes and executes TFLint. Saves findings to tflint.json and status to tflint.exit,
+      and posts status to GitHub.
+    vars:
+      CONTEXT: '{{.CONTEXT | default "ci/tflint"}}'
+    cmds:
+      - mkdir -p {{.WORKSPACE_DIR}}
+      - tflint --init --chdir={{.TOFU_DIR}} > /dev/null 2>&1 || true
+      - |
+        tflint -f json --chdir={{.TOFU_DIR}} > {{.WORKSPACE_DIR}}/tflint.json 2> {{.WORKSPACE_DIR}}/tflint-output.txt || EXIT_CODE=$?
+        echo ${EXIT_CODE:-0} > {{.WORKSPACE_DIR}}/tflint.exit
+      - post-step-status.sh tflint "{{.CONTEXT}}"
+
+  fmt:
+    desc: Check formatting of configuration files and export status
+    summary: |
+      Runs style check validation. Captures unformatted files and status,
+      and posts status to GitHub.
+    vars:
+      CONTEXT: '{{.CONTEXT | default "ci/fmt"}}'
+    cmds:
+      - mkdir -p {{.WORKSPACE_DIR}}
+      - |
+        tofu -chdir={{.TOFU_DIR}} fmt -check -no-color > {{.WORKSPACE_DIR}}/fmt-output.txt 2>&1 || EXIT_CODE=$?
+        echo ${EXIT_CODE:-0} > {{.WORKSPACE_DIR}}/fmt.exit
+      - post-step-status.sh fmt "{{.CONTEXT}}"
+
+  validate:
+    desc: Validate OpenTofu syntax and export status
+    summary: |
+      Runs syntax validation check on configurations. Captures validation diagnostics,
+      and posts status to GitHub.
+    vars:
+      CONTEXT: '{{.CONTEXT | default "ci/validate"}}'
+    cmds:
+      - mkdir -p {{.WORKSPACE_DIR}}
+      - |
+        tofu -chdir={{.TOFU_DIR}} validate -json > {{.WORKSPACE_DIR}}/validate.json 2>&1 || EXIT_CODE=$?
+        echo ${EXIT_CODE:-0} > {{.WORKSPACE_DIR}}/validate.exit
+      - post-step-status.sh validate "{{.CONTEXT}}"
+
+  plan:
+    desc: Run OpenTofu plan, export JSON plan and status
+    summary: |
+      Executes a detailed planning operation. Captures plan.tfplan, plan.json, and stdout,
+      and posts status to GitHub.
+    vars:
+      CONTEXT: '{{.CONTEXT | default "ci/plan"}}'
+      SPECULATIVE: '{{.SPECULATIVE | default "false"}}'
+      TOFU_ARGS: '{{if eq .SPECULATIVE "true"}}-lock=false{{else}}{{.TOFU_ARGS | default ""}}{{end}}'
+    cmds:
+      - mkdir -p {{.WORKSPACE_DIR}}
+      - |
+        tofu -chdir={{.TOFU_DIR}} plan -detailed-exitcode -no-color -out={{.WORKSPACE_DIR}}/plan.tfplan {{.TOFU_ARGS}} > {{.WORKSPACE_DIR}}/plan-output.txt 2>&1 || EXIT_CODE=$?
+        echo ${EXIT_CODE:-0} > {{.WORKSPACE_DIR}}/plan.exit
+      - |
+        if [ -f {{.WORKSPACE_DIR}}/plan.tfplan ]; then
+          tofu -chdir={{.TOFU_DIR}} show -json {{.WORKSPACE_DIR}}/plan.tfplan > {{.WORKSPACE_DIR}}/plan.json 2>&1 || true
+        fi
+      - post-step-status.sh plan "{{.CONTEXT}}"
+      - |
+        EXIT_CODE=$(cat {{.WORKSPACE_DIR}}/plan.exit)
+        if [ "${EXIT_CODE}" != "0" ] && [ "${EXIT_CODE}" != "2" ]; then
+          exit ${EXIT_CODE}
+        fi
+
+  apply:
+    desc: Apply changes to target infrastructure
+    summary: |
+      Applies plan changes if available, captures execution logs,
+      and posts completion status to GitHub.
+    vars:
+      CONTEXT: '{{.CONTEXT | default "cd/apply"}}'
+      TOFU_ARGS: '{{.TOFU_ARGS | default ""}}'
+    cmds:
+      - mkdir -p {{.WORKSPACE_DIR}}
+      - |
+        if [ -f "{{.WORKSPACE_DIR}}/plan.exit" ] && [ "$(cat {{.WORKSPACE_DIR}}/plan.exit)" = "0" ]; then
+          echo "Plan showed no changes — skipping apply."
+          post-status.sh \
+            --state=success \
+            --context="{{.CONTEXT}}" \
+            --description="no changes to apply" \
+            --allow-failure
+          exit 0
+        fi
+      - |
+        tofu -chdir={{.TOFU_DIR}} apply -no-color -auto-approve {{.TOFU_ARGS}} > {{.WORKSPACE_DIR}}/apply-output.txt 2>&1 || EXIT_CODE=$?
+        echo ${EXIT_CODE:-0} > {{.WORKSPACE_DIR}}/apply.exit
+      - post-step-status.sh apply "{{.CONTEXT}}"
+      - |
+        EXIT_CODE=$(cat {{.WORKSPACE_DIR}}/apply.exit)
+        exit ${EXIT_CODE}
+
+  pr-comment:
+    desc: Generate and post consolidated PR summary Markdown comment
+    summary: |
+      Renders the full sequence of validation checks and plan diff details, then creates/updates
+      the single PR comment on GitHub.
+    cmds:
+      - mkdir -p {{.WORKSPACE_DIR}}
+      - tofu-pr-summary-gomplate.sh
+
+  gate:
+    desc: Gate the build and block if any validation check failed
+    summary: |
+      Exits non-zero if any listed step failed validation.
+    vars:
+      STEPS: '{{.STEPS | default "tflint fmt validate plan"}}'
+    cmds:
+      - |
+        FAIL=0
+        for step in {{.STEPS}}; do
+          f="{{.WORKSPACE_DIR}}/${step}.exit"
+          if [ ! -f "$f" ]; then
+            echo "WARNING: no exit file for step '${step}' — treating as failure."
+            FAIL=1
+            continue
+          fi
+          code=$(cat "$f")
+          if [ "${step}" = "plan" ]; then
+            if [ "$code" != "0" ] && [ "$code" != "2" ]; then
+              echo "FAIL: ${step} exited ${code}"
+              FAIL=1
+            fi
+          else
+            if [ "$code" != "0" ]; then
+              echo "FAIL: ${step} exited ${code}"
+              FAIL=1
+            fi
+          fi
+        done
+        exit $FAIL
