@@ -12,9 +12,12 @@ RUN apk add --no-cache \
     github-cli \
     grep \
     jq \
+    openssl \
+    tmux \
     yq
 
-RUN gcloud components install --quiet log-streaming beta 
+RUN gcloud components update --quiet \
+  && gcloud components install --quiet log-streaming beta
 
 USER cloudsdk
 
