@@ -183,7 +183,12 @@ PLAN_CODE=$(read_exit plan)
 TFLINT_BADGE=$(status_badge "$TFLINT_CODE")
 FMT_BADGE=$(status_badge "$FMT_CODE")
 VALIDATE_BADGE=$(status_badge "$VALIDATE_CODE")
+# tofu plan exit code 2 means "succeeded with changes" and is treated as
+# success everywhere else (status API, gate). Reflect that in the summary.
 PLAN_BADGE=$(status_badge "$PLAN_CODE")
+if [[ "$PLAN_CODE" == "2" ]]; then
+  PLAN_BADGE="✅ \`success\`"
+fi
 
 TFLINT_DETAILS=$(failure_details "TFLint"   tflint   "$TFLINT_CODE")
 FMT_DETAILS=$(failure_details    "Format"   fmt      "$FMT_CODE")
