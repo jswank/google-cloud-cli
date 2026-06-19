@@ -5,12 +5,26 @@
 # evaluative CI steps (tflint, fmt, validate, plan). Replaces any previous
 # comment from this script using an HTML marker tag.
 #
+# Supports GitHub and Gitea.
+#
 # Environment (source /workspace/build-context.env before invoking):
-#   GITHUB_TOKEN     GitHub token with issues:write permission (required)
 #   PR_NUMBER        Pull request number (required)
 #   REPO_FULL_NAME   Repository full name, e.g. jswank/gcp-sandbox-stigian (required)
 #   BUILD_ID         Cloud Build build ID shown in the comment footer (required)
 #   BUILD_URL        Cloud Build console URL for this build (required)
+#
+#   Token (one of the following is required):
+#     PR_TOKEN       Explicit token for PR comment operations (highest priority)
+#     STATUS_TOKEN   Generic API token used by post-status.sh; aliased from
+#                    GITHUB_TOKEN by tofu-runner.sh when not set
+#     GITHUB_TOKEN   GitHub token with issues:write permission
+#
+#   Platform selection (optional):
+#     PR_PLATFORM    VCS platform: github | gitea (default: github)
+#     STATUS_PLATFORM Same as PR_PLATFORM; used if PR_PLATFORM is unset
+#     PR_HOST        Gitea base URL, e.g. https://git.example.com
+#                    Required when platform is gitea.
+#     STATUS_HOST    Same as PR_HOST; used if PR_HOST is unset
 #
 # Per-step workspace files (written by pr.yaml):
 #   /workspace/{tflint,fmt,validate,plan}.exit       — exit code or "skipped"
@@ -21,20 +35,43 @@ set -euo pipefail
 MARKER="<!-- cloud-build-tofu-ci -->"
 
 ###############################################################################
-# Validate inputs
+# Validate inputs / resolve platform
 ###############################################################################
 if [[ -z "${PR_NUMBER:-}" ]]; then
   echo "PR_NUMBER not set — skipping comment."
   exit 0
 fi
 
-if [[ -z "${GITHUB_TOKEN:-}" ]]; then
-  echo "GITHUB_TOKEN not set — cannot post comment."
+PR_PLATFORM="${PR_PLATFORM:-${STATUS_PLATFORM:-github}}"
+PR_HOST="${PR_HOST:-${STATUS_HOST:-}}"
+TOKEN="${PR_TOKEN:-${STATUS_TOKEN:-${GITHUB_TOKEN:-}}}"
+
+if [[ -z "${TOKEN:-}" ]]; then
+  echo "ERROR: No API token found. Set GITHUB_TOKEN, STATUS_TOKEN, or PR_TOKEN."
   exit 1
 fi
 
-REPO="${REPO_FULL_NAME}"
-export GH_TOKEN="${GITHUB_TOKEN}"
+if [[ -z "${REPO_FULL_NAME:-}" ]]; then
+  echo "ERROR: REPO_FULL_NAME is not set."
+  exit 1
+fi
+
+case "${PR_PLATFORM}" in
+  github)
+    API_BASE="https://api.github.com/repos/${REPO_FULL_NAME}"
+    ;;
+  gitea)
+    if [[ -z "${PR_HOST}" ]]; then
+      echo "ERROR: PR_HOST (or STATUS_HOST) is required for --platform=gitea."
+      exit 1
+    fi
+    API_BASE="${PR_HOST%/}/api/v1/repos/${REPO_FULL_NAME}"
+    ;;
+  *)
+    echo "ERROR: PR_PLATFORM must be 'github' or 'gitea'."
+    exit 1
+    ;;
+esac
 
 ###############################################################################
 # Helpers
@@ -95,9 +132,9 @@ plan_block() {
     clean=$(echo "$input" | sed -r '/^(An execution plan has been generated and is shown below\.|Terraform used the selected providers to generate the following execution|OpenTofu used the selected providers to generate the following execution|No changes\. Infrastructure is up-to-date\.|No changes\. Your infrastructure matches the configuration\.|Note: Objects have changed outside of Terraform)$/,$!d')
     # Truncate at the plan summary line.
     clean=$(echo "$clean" | sed -r '/^Plan: /q')
-    # GitHub comment limit — leave headroom for wrapper.
+    # GitHub/Gitea comment limit — leave headroom for wrapper.
     clean="${clean::65000}"
-    # Move diff characters to the start of the line for GitHub diff colouring.
+    # Move diff characters to the start of the line for diff colouring.
     clean=$(echo "$clean" | sed -r 's/^([[:blank:]]*)([-+~])/\2\1/g')
     clean=$(echo "$clean" | sed -r 's/^~/!/g')
 
@@ -105,6 +142,34 @@ plan_block() {
   else
     printf '<details><summary>Plan output</summary>\n\n```\n%s\n```\n</details>\n' "$input"
   fi
+}
+
+# Make an authenticated API request and return the HTTP response code.
+# Response body is written to $RESP_FILE.
+api_call() {
+  local method="$1"
+  local url="$2"
+  local resp_file="$3"
+  local payload_file="${4:-}"
+
+  local headers=(-H "Authorization: token ${TOKEN}")
+  if [[ "${PR_PLATFORM}" == "github" ]]; then
+    headers+=(-H "Accept: application/vnd.github+json")
+  fi
+
+  local curl_opts=(
+    -s
+    -o "${resp_file}"
+    -w "%{http_code}"
+    -X "${method}"
+    "${headers[@]}"
+  )
+
+  if [[ -n "${payload_file}" ]]; then
+    curl_opts+=(-H "Content-Type: application/json" --data-binary "@${payload_file}")
+  fi
+
+  curl "${curl_opts[@]}" "${url}"
 }
 
 ###############################################################################
@@ -147,22 +212,41 @@ ${PLAN_DETAILS}
 *Build: [${BUILD_LABEL}](${BUILD_URL})*"
 
 ###############################################################################
-# Replace previous CI comment via gh CLI
+# Replace previous CI comment via the platform API
 ###############################################################################
-echo "Repo: ${REPO}  PR: ${PR_NUMBER}"
+echo "Repo: ${REPO_FULL_NAME}  PR: ${PR_NUMBER}  Platform: ${PR_PLATFORM}"
 
-echo "Looking for an existing CI comment..."
-OLD_ID=$(gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" \
-  | jq -r --arg marker "$MARKER" 'map(select(.body | contains($marker))) | first | .id // empty')
+LIST_URL="${API_BASE}/issues/${PR_NUMBER}/comments?per_page=100&limit=100"
+COMMENTS_FILE="/tmp/pr_summary_comments.json"
 
-if [[ -n "$OLD_ID" ]]; then
-  echo "Updating existing comment ${OLD_ID}."
-  gh api -X PATCH "repos/${REPO}/issues/comments/${OLD_ID}" \
-    -f body="$BODY" > /dev/null
-else
-  echo "Posting new PR comment..."
-  gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" \
-    -f body="$BODY" > /dev/null
+HTTP_CODE=$(api_call GET "${LIST_URL}" "${COMMENTS_FILE}")
+if [[ ! "${HTTP_CODE}" =~ ^2 ]]; then
+  echo "ERROR: Failed to list comments (HTTP ${HTTP_CODE})." >&2
+  cat "${COMMENTS_FILE}" >&2
+  exit 1
 fi
 
-echo "Done."
+OLD_ID=$(jq -r --arg marker "$MARKER" 'map(select(.body | contains($marker))) | first | .id // empty' "${COMMENTS_FILE}")
+
+PAYLOAD_FILE="/tmp/pr_summary_payload.json"
+jq -n --arg body "$BODY" '{body: $body}' > "${PAYLOAD_FILE}"
+
+RESPONSE_FILE="/tmp/pr_summary_response.json"
+
+if [[ -n "${OLD_ID}" ]]; then
+  echo "Updating existing comment ${OLD_ID}."
+  UPDATE_URL="${API_BASE}/issues/comments/${OLD_ID}"
+  HTTP_CODE=$(api_call PATCH "${UPDATE_URL}" "${RESPONSE_FILE}" "${PAYLOAD_FILE}")
+else
+  echo "Posting new PR comment..."
+  CREATE_URL="${API_BASE}/issues/${PR_NUMBER}/comments"
+  HTTP_CODE=$(api_call POST "${CREATE_URL}" "${RESPONSE_FILE}" "${PAYLOAD_FILE}")
+fi
+
+if [[ "${HTTP_CODE}" =~ ^2 ]]; then
+  echo "Comment posted (HTTP ${HTTP_CODE})."
+else
+  echo "ERROR: Failed to post comment (HTTP ${HTTP_CODE})." >&2
+  cat "${RESPONSE_FILE}" >&2
+  exit 1
+fi
