@@ -45,6 +45,20 @@ before invoking any sub-command or helper script.
 - `PR_NUMBER` — pull request number, remapped from `$_PR_NUMBER`. Empty string
   when not running in a PR context (`apply.yaml`).
 
+## PR Comment Platform Selection
+
+`tofu-pr-summary.sh` uses these variables to decide where to post the PR
+comment. They only need to be set when the target platform is not GitHub.
+
+- `PR_PLATFORM` / `STATUS_PLATFORM` — VCS platform: `github` (default) or
+  `gitea`. `PR_PLATFORM` takes precedence over `STATUS_PLATFORM`.
+- `PR_HOST` / `STATUS_HOST` — Gitea base URL, e.g.
+  `https://git.example.com`. Required when the platform is `gitea`.
+  `PR_HOST` takes precedence over `STATUS_HOST`.
+- `PR_TOKEN` / `STATUS_TOKEN` / `GITHUB_TOKEN` — API token used to create and
+  update PR comments. `PR_TOKEN` is checked first, then `STATUS_TOKEN`, then
+  `GITHUB_TOKEN`.
+
 ## Secrets
 
 Injected via `secretEnv` in the build config, not substitutions.

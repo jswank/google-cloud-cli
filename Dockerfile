@@ -6,6 +6,7 @@ LABEL maintainer="jswank@scalene.net" \
 
 RUN apk add --no-cache \
     coreutils \
+    curl \
     direnv \
     gawk \
     git \
