@@ -42,10 +42,14 @@ update-gcloud-prompt() {
 
    local identifier
    if [[ "$active_account" == principal://* ]]; then
-       # Extract everything prior to the first '-' in WIF_PROVIDER (e.g. navsea0)
-       # using pure bash parameter expansion for speed
-       local prefix="${WIF_PROVIDER%%-*}"
-       identifier="${prefix:-navsea} - WIF"
+       # Extract pool name after *Pools/ and take prefix prior to first '-'
+       local pool="${active_account#*Pools/}"
+       if [[ "$pool" != "$active_account" ]]; then
+           local prefix="${pool%%[/-]*}"
+           identifier="${prefix:+$prefix - }WIF"
+       else
+           identifier="WIF"
+       fi
    else
        # Fallback to the active account email for standard logins
        identifier="$active_account"
